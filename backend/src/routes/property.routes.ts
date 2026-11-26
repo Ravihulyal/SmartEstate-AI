@@ -1,5 +1,6 @@
 
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 
 import {
   createProperty,
@@ -13,8 +14,41 @@ import {
 
 import { authenticateToken } from "../middleware/auth.middleware";
 import { authorizeRoles } from "../middleware/role.middleware";
+import { parsePropertyImageUpload } from "../middleware/property-image-upload.middleware";
+import {
+  deletePropertyImage,
+  uploadPropertyImageFiles
+} from "../controllers/property-image.controller";
 
 const router = Router();
+
+const propertyImageRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: "Too many image upload requests. Please try again later."
+  }
+});
+
+// Seller-only Cloudinary image management
+router.post(
+  "/images",
+  authenticateToken,
+  authorizeRoles("SELLER"),
+  propertyImageRateLimit,
+  parsePropertyImageUpload,
+  uploadPropertyImageFiles
+);
+
+router.delete(
+  "/images",
+  authenticateToken,
+  authorizeRoles("SELLER"),
+  propertyImageRateLimit,
+  deletePropertyImage
+);
 
 // Public: view approved properties
 router.get("/", getProperties);

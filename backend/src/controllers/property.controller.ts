@@ -5,6 +5,8 @@ import { Prisma } from "@prisma/client";
 import prisma from "../config/prisma";
 import { AuthRequest } from "../middleware/auth.middleware";
 import { predictPrice } from "../services/ml.service";
+import { MAX_PROPERTY_IMAGES } from "../middleware/property-image-upload.middleware";
+import { getOwnedCloudinaryPublicId } from "../services/cloudinary.service";
 
 // PROPERTY VALIDATION SCHEMA
 
@@ -32,7 +34,7 @@ const propertyBaseSchema = z.object({
   price: z.coerce.number().positive().optional(),
   rentPerMonth: z.coerce.number().positive().optional(),
 
-  images: z.array(z.string().url()).optional().default([])
+  images: z.array(z.string().url()).max(MAX_PROPERTY_IMAGES).optional().default([])
 });
 
 const propertySchema = propertyBaseSchema.superRefine((data, ctx) => {
@@ -79,6 +81,9 @@ const propertySelect = {
   updatedAt: true
 } satisfies Prisma.PropertySelect;
 
+function imagesBelongToSeller(images: string[], sellerId: string): boolean {
+  return images.every((image) => getOwnedCloudinaryPublicId(image, sellerId) !== null);
+}
 
 // CREATE PROPERTY WITH ML PRICE PREDICTION
 
@@ -97,6 +102,11 @@ export async function createProperty(
     }
 
     const data = result.data;
+    if (!imagesBelongToSeller(data.images, req.user!.id)) {
+      return res.status(400).json({
+        message: "Property images must be uploaded through the authenticated image upload endpoint"
+      });
+    }
 
     let predictedPriceLakhs: number | null = null;
 
@@ -376,6 +386,11 @@ export async function updateProperty(
     }
 
     const data = validated.data;
+    if (!imagesBelongToSeller(data.images, req.user!.id)) {
+      return res.status(400).json({
+        message: "Property images must be uploaded through the authenticated image upload endpoint"
+      });
+    }
 
     let predictedPriceLakhs: number | null = null;
 

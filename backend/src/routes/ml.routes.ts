@@ -1,6 +1,7 @@
 
 import { Router, Request, Response } from "express";
 import axios, { AxiosError } from "axios";
+import { rateLimit } from "express-rate-limit";
 
 import {
   predictPrice,
@@ -10,6 +11,14 @@ import {
 } from "../services/ml.service";
 
 const router = Router();
+
+router.use(rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many ML requests. Please try again later." }
+}));
 
 // Handle ML service errors
 function handleError(error: unknown, res: Response) {

@@ -1,5 +1,6 @@
 
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 
 import {
   register,
@@ -15,11 +16,27 @@ import {
 
 const router = Router();
 
+const registrationRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many registration attempts. Please try again later." }
+});
+
+const loginRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many login attempts. Please try again later." }
+});
+
 // Register
-router.post("/register", register);
+router.post("/register", registrationRateLimit, register);
 
 // Login
-router.post("/login", login);
+router.post("/login", loginRateLimit, login);
 
 // Get logged-in user
 router.get(

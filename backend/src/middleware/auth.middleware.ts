@@ -10,6 +10,41 @@ export interface AuthRequest extends Request {
   };
 }
 
+type TokenVerification =
+  | { user: NonNullable<AuthRequest["user"]> }
+  | { error: "claims" | "token" };
+
+function verifyToken(token: string): TokenVerification {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
+
+    if (
+      typeof decoded.sub !== "string" ||
+      !["BUYER", "SELLER", "ADMIN"].includes(decoded.role)
+    ) {
+      return { error: "claims" };
+    }
+
+    return {
+      user: {
+        id: decoded.sub,
+        role: decoded.role as "BUYER" | "SELLER" | "ADMIN"
+      }
+    };
+  } catch {
+    return { error: "token" };
+  }
+}
+
+export function getAuthenticatedUser(token: string): AuthRequest["user"] | null {
+  const result = verifyToken(token);
+  return "user" in result ? result.user : null;
+}
+
+function invalidTokenMessage(result: Exclude<TokenVerification, { user: unknown }>): string {
+  return result.error === "claims" ? "Invalid authentication token" : "Invalid or expired token";
+}
+
 export function authenticateToken(
   req: AuthRequest,
   res: Response,
@@ -33,30 +68,14 @@ export function authenticateToken(
     });
   }
 
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
-
-    if (
-      typeof decoded.sub !== "string" ||
-      !["BUYER", "SELLER", "ADMIN"].includes(decoded.role)
-    ) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid authentication token"
-      });
-    }
-
-    req.user = {
-      id: decoded.sub,
-      role: decoded.role
-    };
-
-    next();
-
-  } catch {
+  const result = verifyToken(token);
+  if ("error" in result) {
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired token"
+      message: invalidTokenMessage(result)
     });
   }
+
+  req.user = result.user;
+  next();
 }
