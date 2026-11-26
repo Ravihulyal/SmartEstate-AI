@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+venv/
+__pycache__/
+*.pyc
+*.pkl
+*.joblib
+.DS_Store
