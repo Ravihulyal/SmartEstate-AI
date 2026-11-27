@@ -12,6 +12,15 @@ const mlClient = axios.create({
   }
 });
 
+function getMlApiKey(): string {
+  const apiKey = process.env.ML_API_KEY;
+  if (!apiKey?.trim()) {
+    throw new Error("ML_API_KEY must be configured before making ML service requests");
+  }
+
+  return apiKey;
+}
+
 export interface PricePredictionInput {
   location: string;
   total_sqft: number;
@@ -50,7 +59,8 @@ export async function predictPrice(
 ): Promise<PricePredictionResponse> {
   const response = await mlClient.post(
     "/predict-price",
-    data
+    data,
+    { headers: { "X-API-Key": getMlApiKey() } }
   );
 
   return response.data as PricePredictionResponse;
@@ -60,7 +70,8 @@ export async function predictPrice(
 export async function detectFraud(data: FraudDetectionInput) {
   const response = await mlClient.post(
     "/detect-fraud",
-    data
+    data,
+    { headers: { "X-API-Key": getMlApiKey() } }
   );
 
   return response.data;
@@ -70,7 +81,8 @@ export async function detectFraud(data: FraudDetectionInput) {
 export async function classifyRisk(data: RiskClassificationInput) {
   const response = await mlClient.post(
     "/classify-risk",
-    data
+    data,
+    { headers: { "X-API-Key": getMlApiKey() } }
   );
 
   return response.data;
@@ -80,7 +92,8 @@ export async function classifyRisk(data: RiskClassificationInput) {
 export async function recommendProperties(data: RecommendationInput) {
   const response = await mlClient.post(
     "/recommend",
-    data
+    data,
+    { headers: { "X-API-Key": getMlApiKey() } }
   );
 
   return response.data;

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx --test src/controllers/auction.controller.test.ts src/routes/auction.routes.test.ts src/routes/auction-winner-approval.integration.test.ts src/routes/payment.routes.test.ts src/routes/payment-workflow.integration.test.ts src/services/auction-socket.service.test.ts src/services/auction-status.service.test.ts src/services/payment-socket.service.test.ts src/services/simulated-payment.service.test.ts",
+    "test": "tsx --test src/controllers/auction.controller.test.ts src/routes/auction.routes.test.ts src/routes/auction-winner-approval.integration.test.ts src/routes/payment.routes.test.ts src/routes/payment-workflow.integration.test.ts src/services/auction-socket.service.test.ts src/services/auction-status.service.test.ts src/services/ml.service.test.ts src/services/payment-socket.service.test.ts src/services/simulated-payment.service.test.ts",
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

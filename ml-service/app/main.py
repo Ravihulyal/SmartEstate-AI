@@ -1,13 +1,17 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+import logging
+import math
+import os
+import secrets
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+import joblib
+import pandas as pd
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from pathlib import Path
-import logging
-import pandas as pd
-import joblib
-import math
 
 from app.models.recommend_model import recommend_properties
 
@@ -37,11 +41,32 @@ global_median = risk_data["global_median"]
 
 
 # Create FastAPI application
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    api_key = os.getenv("ML_API_KEY")
+    if not api_key or not api_key.strip():
+        raise RuntimeError("ML_API_KEY must be configured before starting the ML service")
+    yield
+
+
 app = FastAPI(
     title="SmartEstate AI",
     description="AI-powered property intelligence platform",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
+
+
+def verify_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+) -> None:
+    api_key = os.getenv("ML_API_KEY")
+    if (
+        not api_key
+        or not x_api_key
+        or not secrets.compare_digest(x_api_key.encode("utf-8"), api_key.encode("utf-8"))
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 @app.exception_handler(RequestValidationError)
@@ -111,7 +136,7 @@ def health():
 
 
 # 1. Random Forest - Price Prediction
-@app.post("/predict-price")
+@app.post("/predict-price", dependencies=[Depends(verify_api_key)])
 def predict_price(data: PricePredictionInput):
 
     property_data = pd.DataFrame([{
@@ -139,7 +164,7 @@ def predict_price(data: PricePredictionInput):
 
 
 # 2. Isolation Forest - Anomaly Detection
-@app.post("/detect-fraud")
+@app.post("/detect-fraud", dependencies=[Depends(verify_api_key)])
 def detect_fraud(data: FraudRiskInput):
 
     price_per_sqft = (
@@ -182,7 +207,7 @@ def detect_fraud(data: FraudRiskInput):
 
 
 # 3. Logistic Regression - Risk Classification
-@app.post("/classify-risk")
+@app.post("/classify-risk", dependencies=[Depends(verify_api_key)])
 def classify_risk(data: FraudRiskInput):
 
     price_per_sqft = (
@@ -225,7 +250,7 @@ def classify_risk(data: FraudRiskInput):
 
 
 # 4. Content-Based Filtering - Recommendations
-@app.post("/recommend")
+@app.post("/recommend", dependencies=[Depends(verify_api_key)])
 def recommend(data: RecommendationInput):
 
     try:
