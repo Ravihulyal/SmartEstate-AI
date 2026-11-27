@@ -1,17 +1,16 @@
-const FAVORITES_KEY = 'smartestate_favorites'
+import { api } from './api'
+import type { Property, PropertyListResponse } from '../types'
 
-export function getFavoriteIds(): string[] {
-  try {
-    const saved: unknown = JSON.parse(window.localStorage.getItem(FAVORITES_KEY) ?? '[]')
-    return Array.isArray(saved) && saved.every((item) => typeof item === 'string') ? saved : []
-  } catch {
-    return []
-  }
+export async function getFavorites(): Promise<PropertyListResponse> {
+  const response = await api.get<PropertyListResponse>('/favorites')
+  return response.data
 }
 
-export function toggleFavoriteId(id: string): string[] {
-  const current = getFavoriteIds()
-  const next = current.includes(id) ? current.filter((favorite) => favorite !== id) : [...current, id]
-  window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
-  return next
+export async function addFavorite(propertyId: string): Promise<Property> {
+  const response = await api.post<{ property: Property }>(`/favorites/${encodeURIComponent(propertyId)}`)
+  return response.data.property
+}
+
+export async function removeFavorite(propertyId: string): Promise<void> {
+  await api.delete(`/favorites/${encodeURIComponent(propertyId)}`)
 }

@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createApp } from "./app";
 import { initializeAuctionSockets } from "./services/auction-socket.service";
 import { startAuctionStatusBroadcasts } from "./services/auction-status.service";
+import { startPaymentExpiryWorker } from "./services/payment-expiry.service";
 
 const PORT = process.env.PORT || 5000;
 const io = new Server({
@@ -19,6 +20,7 @@ const httpServer = createServer(app);
 io.attach(httpServer);
 initializeAuctionSockets(io);
 startAuctionStatusBroadcasts(io);
+startPaymentExpiryWorker(io);
 
 httpServer.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);

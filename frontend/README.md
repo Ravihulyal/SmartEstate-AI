@@ -21,11 +21,17 @@ Run checks with `npm run build` and `npm run lint`.
 - Buyer and seller registration, login and current-user lookup.
 - Role-protected buyer, seller and administrator dashboards.
 - Approved-property search by city, listing type, property type and bedroom count.
-- Property details, browser-local favorites and sale estimate display in lakhs.
+- Property details, backend-persisted buyer favorites and sale estimate display in lakhs.
 - Seller property creation, owned listings, eligible edits and approval status.
+- Auction discovery, seller auction creation, buyer bidding, bid history and live Socket.IO updates.
 - Administrator pending review, approval and rejection.
+- Buyer simulated-payment requests, attempt history and simulated receipts; seller payment monitoring and confirmation of eligible demo closings; administrator read-only payment, closing and audit monitoring.
 
-Favorites are stored only in this browser because the current backend does not expose a favorites API. The admin overview reports pending and public approved listing counts; it does not invent a user count because the current backend has no user-directory endpoint. Seller contact details and viewing/booking flows are likewise not available from the current API.
+The payment workflow is a hackathon demonstration only. It collects no payment credentials, does not contact a payment provider, and does not transfer legal property title. Buyer outcomes are explicitly simulated; only the backend can authorize a seller closing, and admins have read-only transaction access.
+
+The seller flow requests a Random Forest estimate only for SALE properties; RENT properties have no sale-price estimate. The backend also exposes anomaly-detection, risk-classification and recommendation endpoints, but they are not buyer-dashboard workflows. Recommendations rank candidates from explicit search attributes and the local dataset, not a persisted personal profile. Anomaly flags are review signals, not proof of fraud; risk-model labels are heuristic demonstrations, not verified fraud outcomes.
+
+Favorites are stored by the backend for authenticated buyers. Auction reads are available at `GET /api/v1/auctions`, `GET /api/v1/auctions/:id` and `GET /api/v1/auctions/:id/bids`; sellers create auctions with `POST /api/v1/auctions`, and buyers bid with `POST /api/v1/auctions/:id/bids`. Socket.IO connections use the existing JWT and can join approved auction rooms for live bid and status updates. A first bid may equal the starting price; each later bid must exceed the current highest bid by at least INR 0.01. The existing model has no configurable increment or auction cancellation endpoint. Auction listing and bid-history responses are capped at 100 items. The admin overview reports pending and public approved listing counts; it does not invent a user count because the current backend has no user-directory endpoint. Seller contact details and viewing/booking flows are likewise not available from the current API.
 
 ## Authentication and production security
 

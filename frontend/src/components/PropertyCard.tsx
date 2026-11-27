@@ -2,24 +2,30 @@ import { BedDouble, Heart, MapPin, MoveUpRight, Ruler } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Property } from '../types'
 import { formatPropertyType } from '../services/propertyFormat'
+import { FallbackImage } from './FallbackImage'
 
 function formatCurrency(value: number | null): string {
   if (value === null) return 'Price on request'
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 }
 
-export function PropertyCard({ property, favorite, onFavorite }: { property: Property; favorite?: boolean; onFavorite?: (id: string) => void }) {
+export function PropertyCard({ property, favorite, favoritePending = false, onFavorite }: {
+  property: Property
+  favorite?: boolean
+  favoritePending?: boolean
+  onFavorite?: (id: string) => void
+}) {
   const rental = property.listingType === 'RENT'
   return (
     <article className="property-card">
       <Link to={`/properties/${encodeURIComponent(property.id)}`} aria-label={`View ${property.title}`}>
         <div className="property-image">
-          {property.images[0] ? <img src={property.images[0]} alt={property.title} loading="lazy" /> : <div className="image-placeholder"><Ruler size={30} /><span>SmartEstate property</span></div>}
+          {property.images[0] ? <FallbackImage src={property.images[0]} alt={property.title} loading="lazy" /> : <div className="image-placeholder"><Ruler size={30} /><span>SmartEstate property</span></div>}
           <span className="property-tag">{rental ? 'For rent' : 'For sale'}</span>
         </div>
       </Link>
       {onFavorite && (
-        <button className={`favorite-button ${favorite ? 'is-favorite' : ''}`} onClick={() => onFavorite(property.id)} aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={favorite}>
+        <button className={`favorite-button ${favorite ? 'is-favorite' : ''}`} onClick={() => onFavorite(property.id)} aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={favorite} disabled={favoritePending}>
           <Heart size={17} fill={favorite ? 'currentColor' : 'none'} />
         </button>
       )}

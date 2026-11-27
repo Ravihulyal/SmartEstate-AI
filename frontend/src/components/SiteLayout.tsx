@@ -8,6 +8,13 @@ export function SiteLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const dashboardPath = user?.role === 'SELLER' ? '/seller' : user?.role === 'ADMIN' ? '/admin' : '/dashboard'
+  const workflowLink = user?.role === 'BUYER'
+    ? { to: '/dashboard#payments', label: 'My payments' }
+    : user?.role === 'SELLER'
+      ? { to: '/seller#closings', label: 'Payment & closings' }
+      : user?.role === 'ADMIN'
+        ? { to: '/admin#transactions', label: 'Transactions' }
+        : null
 
   function signOut() {
     logout()
@@ -26,7 +33,9 @@ export function SiteLayout() {
           <nav className={`nav-links ${menuOpen ? 'nav-links-open' : ''}`} aria-label="Main navigation">
             <NavLink to="/" onClick={() => setMenuOpen(false)}>Home</NavLink>
             <a href="/#discover" onClick={() => setMenuOpen(false)}>Discover homes</a>
+            <NavLink to="/auctions" onClick={() => setMenuOpen(false)}>Auctions</NavLink>
             {user && <NavLink to={dashboardPath} onClick={() => setMenuOpen(false)}>Dashboard</NavLink>}
+            {workflowLink && <NavLink to={workflowLink.to} onClick={() => setMenuOpen(false)}>{workflowLink.label}</NavLink>}
             {user?.role === 'SELLER' && <NavLink to="/seller" onClick={() => setMenuOpen(false)}>My listings</NavLink>}
             {user && <button className="mobile-logout" onClick={signOut}>Log out</button>}
           </nav>

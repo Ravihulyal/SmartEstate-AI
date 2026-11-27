@@ -26,3 +26,5 @@ if result[0] == -1:
 else:
     print("No unusual pattern detected.")
     print("Status: Normal")
+
+print("Anomaly signals are for review only and do not prove fraud.")

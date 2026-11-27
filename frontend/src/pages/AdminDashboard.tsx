@@ -5,6 +5,8 @@ import { getErrorMessage } from '../services/api'
 import { notify } from '../services/toast'
 import { StatusBadge } from '../components/StatusBadge'
 import { Spinner } from '../components/Spinner'
+import { AuctionManagementPanel } from '../components/AuctionManagementPanel'
+import { AdminPaymentMonitoringPanel } from '../components/AdminPaymentMonitoringPanel'
 import type { Property } from '../types'
 
 function amount(property: Property): string {
@@ -104,6 +106,8 @@ export function AdminDashboard() {
             </div>
           )}
         </section>
+        <AdminPaymentMonitoringPanel />
+        <AuctionManagementPanel mode="ADMIN" />
       </div>
     </main>
   )

@@ -6,12 +6,15 @@ import { ToastContainer } from './components/Toast'
 import { SiteLayout } from './components/SiteLayout'
 import { Spinner } from './components/Spinner'
 import { AdminDashboard } from './pages/AdminDashboard'
+import { AuctionDetailsPage } from './pages/AuctionDetailsPage'
+import { AuctionListingPage } from './pages/AuctionListingPage'
 import { BuyerDashboard } from './pages/BuyerDashboard'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { PropertyDetailsPage } from './pages/PropertyDetailsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { SellerDashboard } from './pages/SellerDashboard'
+import { SellerAuctionPage } from './pages/SellerAuctionPage'
 
 function DashboardRedirect() {
   const { user } = useAuth()
@@ -37,8 +40,11 @@ function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/properties/:id" element={<PropertyDetailsPage />} />
+          <Route path="/auctions" element={<AuctionListingPage />} />
+          <Route path="/auctions/:id" element={<AuctionDetailsPage />} />
           <Route path="/dashboard" element={<ProtectedRoute allowedRole="BUYER"><BuyerDashboard /></ProtectedRoute>} />
           <Route path="/seller" element={<ProtectedRoute allowedRole="SELLER"><SellerDashboard /></ProtectedRoute>} />
+          <Route path="/seller/auctions/new" element={<ProtectedRoute allowedRole="SELLER"><SellerAuctionPage /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute allowedRole="ADMIN"><AdminDashboard /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

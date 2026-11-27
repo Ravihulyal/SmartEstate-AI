@@ -76,7 +76,7 @@ model.fit(X_train, y_train)
 # Evaluate model
 predictions = model.predict(X_test)
 
-print("\nClassification Report:")
+print("\nClassification Report against rule-generated proxy labels (not verified fraud outcomes):")
 print(classification_report(
     y_test,
     predictions,
@@ -84,7 +84,7 @@ print(classification_report(
     zero_division=0
 ))
 
-print("\nConfusion Matrix:")
+print("\nConfusion Matrix against the same proxy labels:")
 print(confusion_matrix(y_test, predictions))
 
 # Save model and location statistics

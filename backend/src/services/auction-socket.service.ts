@@ -19,8 +19,22 @@ export interface AuctionBidPayload {
   status: "ACTIVE";
 }
 
+export interface AuctionOutcomePayload {
+  auctionId: string;
+  status: "COMPLETED";
+  outcomeStatus: "NO_BIDS" | "PENDING_SELLER_APPROVAL" | "ACCEPTED" | "REJECTED";
+  winningBidAmount: number | null;
+  endTime: string;
+}
+
+export const ADMIN_PAYMENT_MONITOR_ROOM = "admin:payment-monitoring";
+
 export function auctionRoom(auctionId: string): string {
   return `auction:${auctionId}`;
+}
+
+export function auctionUserRoom(userId: string): string {
+  return `user:${userId}`;
 }
 
 export function broadcastAuctionStatus(
@@ -35,6 +49,73 @@ export function broadcastAuctionBid(
   payload: AuctionBidPayload
 ): void {
   io.to(auctionRoom(payload.auctionId)).emit("auction:bid-updated", payload);
+}
+
+function broadcastAuctionManagementEvent(
+  io: Server,
+  event: "auction:schedule-updated" | "auction:cancelled" | "auction:ended-early",
+  payload: AuctionStatusPayload
+): void {
+  const room = io.to(auctionRoom(payload.auctionId));
+  room.emit(event, payload);
+  room.emit("auction:status", payload);
+}
+
+export function broadcastAuctionScheduleUpdated(
+  io: Server,
+  payload: AuctionStatusPayload
+): void {
+  broadcastAuctionManagementEvent(io, "auction:schedule-updated", payload);
+}
+
+export function broadcastAuctionCancelled(
+  io: Server,
+  payload: AuctionStatusPayload
+): void {
+  broadcastAuctionManagementEvent(io, "auction:cancelled", payload);
+}
+
+export function broadcastAuctionEndedEarly(
+  io: Server,
+  payload: AuctionStatusPayload
+): void {
+  broadcastAuctionManagementEvent(io, "auction:ended-early", payload);
+}
+
+export function broadcastAuctionAwaitingSellerApproval(
+  io: Server,
+  payload: AuctionOutcomePayload
+): void {
+  io.to(auctionRoom(payload.auctionId)).emit("auction:awaiting-seller-approval", payload);
+}
+
+export function broadcastAuctionNoBids(
+  io: Server,
+  payload: AuctionOutcomePayload
+): void {
+  io.to(auctionRoom(payload.auctionId)).emit("auction:no-bids", payload);
+}
+
+export function broadcastAuctionWinnerApproved(
+  io: Server,
+  payload: AuctionOutcomePayload,
+  winningBidderId: string
+): void {
+  io.to(auctionRoom(payload.auctionId)).emit("auction:winner-approved", payload);
+  io.to(auctionUserRoom(winningBidderId)).emit("auction:winner-confirmed", {
+    auctionId: payload.auctionId,
+    status: payload.status,
+    outcomeStatus: payload.outcomeStatus,
+    winningBidAmount: payload.winningBidAmount,
+    endTime: payload.endTime
+  });
+}
+
+export function broadcastAuctionWinnerRejected(
+  io: Server,
+  payload: AuctionOutcomePayload
+): void {
+  io.to(auctionRoom(payload.auctionId)).emit("auction:winner-rejected", payload);
 }
 
 function currentStatus(auction: {
@@ -76,6 +157,13 @@ export function initializeAuctionSockets(io: Server): void {
 
   io.on("connection", (socket) => {
     const joinSchema = z.object({ auctionId: z.string().cuid() }).strict();
+    const userId = socket.data.user?.id;
+    if (typeof userId === "string") {
+      void socket.join(auctionUserRoom(userId));
+    }
+    if (socket.data.user?.role === "ADMIN") {
+      void socket.join(ADMIN_PAYMENT_MONITOR_ROOM);
+    }
 
     socket.on("auction:join", async (payload: unknown) => {
       const parsed = joinSchema.safeParse(payload);
@@ -88,7 +176,10 @@ export function initializeAuctionSockets(io: Server): void {
         const auction = await prisma.auction.findFirst({
           where: {
             id: parsed.data.auctionId,
-            property: { status: "APPROVED" }
+            OR: [
+              { property: { status: "APPROVED" } },
+              { status: "COMPLETED", property: { status: "SOLD" } }
+            ]
           },
           select: {
             id: true,

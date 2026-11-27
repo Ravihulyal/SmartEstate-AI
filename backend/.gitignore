@@ -3,3 +3,15 @@ node_modules
 .env
 
 /generated/prisma
+
+# Python virtual environments
+.venv/
+**/.venv/
+
+# Python generated files
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and temporary files
+.tsupgrader/

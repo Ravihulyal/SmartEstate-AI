@@ -10,6 +10,7 @@ import { createAuctionRouter } from "./routes/auction.routes";
 import favoritesRoutes from "./routes/favorites.routes";
 import mlRoutes from "./routes/ml.routes";
 import propertyRoutes from "./routes/property.routes";
+import { createPaymentRouter } from "./routes/payment.routes";
 
 export function createApp(io: Server) {
   const app = express();
@@ -36,6 +37,7 @@ export function createApp(io: Server) {
   // API ROUTES
   app.use("/api/v1/auth", authRoutes);
   app.use("/api/v1/auctions", createAuctionRouter(io));
+  app.use("/api/v1/payments", createPaymentRouter(io));
   app.use("/api/v1/favorites", favoritesRoutes);
   app.use("/api/v1/properties", propertyRoutes);
   app.use("/api/v1/ml", mlRoutes);

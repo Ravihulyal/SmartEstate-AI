@@ -1,7 +1,10 @@
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from pathlib import Path
+import logging
 import pandas as pd
 import joblib
 import math
@@ -12,6 +15,7 @@ from app.models.recommend_model import recommend_properties
 # Project paths
 BASE_DIR = Path(__file__).resolve().parents[1]
 ARTIFACT_DIR = BASE_DIR / "artifacts"
+logger = logging.getLogger(__name__)
 
 
 # Load trained models
@@ -40,27 +44,46 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(RequestValidationError)
+async def handle_request_validation_error(
+    _request: Request,
+    exc: RequestValidationError
+) -> JSONResponse:
+    errors = [
+        {
+            "loc": list(error["loc"]),
+            "msg": error["msg"],
+            "type": error["type"]
+        }
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={"detail": errors}
+    )
+
+
 # Request schemas
 class PricePredictionInput(BaseModel):
-    location: str = Field(min_length=1)
-    total_sqft: float = Field(gt=0)
-    bhk: int = Field(gt=0)
-    bath: float = Field(gt=0)
+    location: str = Field(min_length=1, max_length=120)
+    total_sqft: float = Field(gt=0, allow_inf_nan=False)
+    bhk: int = Field(gt=0, le=20)
+    bath: float = Field(gt=0, allow_inf_nan=False)
 
 
 class FraudRiskInput(BaseModel):
-    location: str = Field(min_length=1)
-    total_sqft: float = Field(gt=0)
-    bhk: int = Field(gt=0)
-    bath: float = Field(gt=0)
-    price: float = Field(gt=0)
+    location: str = Field(min_length=1, max_length=120)
+    total_sqft: float = Field(gt=0, allow_inf_nan=False)
+    bhk: int = Field(gt=0, le=20)
+    bath: float = Field(gt=0, allow_inf_nan=False)
+    price: float = Field(gt=0, allow_inf_nan=False, description="Price in INR lakhs")
 
 
 class RecommendationInput(BaseModel):
-    location: str = Field(min_length=1)
-    budget: float = Field(gt=0)
-    bhk: int = Field(gt=0)
-    area: float = Field(gt=0)
+    location: str = Field(min_length=1, max_length=120)
+    budget: float = Field(gt=0, allow_inf_nan=False, description="Budget in INR lakhs")
+    bhk: int = Field(gt=0, le=20)
+    area: float = Field(gt=0, allow_inf_nan=False)
     top_n: int = Field(default=5, ge=1, le=20)
 
 
@@ -136,13 +159,20 @@ def detect_fraud(data: FraudRiskInput):
     anomaly_score = fraud_model.decision_function(
         property_data
     )[0]
+    anomaly_score = float(anomaly_score)
+    if not math.isfinite(anomaly_score):
+        raise HTTPException(
+            status_code=502,
+            detail="Anomaly model returned an invalid score"
+        )
 
     return {
         "algorithm": "Isolation Forest",
         "status": (
             "Suspicious" if prediction == -1 else "Normal"
         ),
-        "anomaly_score": round(float(anomaly_score), 4),
+        "anomaly_score": round(anomaly_score, 4),
+        "interpretation": "An unusual-pattern signal for review only; it is not proof of fraud.",
         "message": (
             "Unusual property pattern detected"
             if prediction == -1
@@ -175,6 +205,12 @@ def classify_risk(data: FraudRiskInput):
     probability = risk_model.predict_proba(
         property_features
     )[0][1]
+    probability = float(probability)
+    if not math.isfinite(probability) or probability < 0 or probability > 1:
+        raise HTTPException(
+            status_code=502,
+            detail="Risk model returned an invalid probability"
+        )
 
     return {
         "algorithm": "Logistic Regression",
@@ -182,8 +218,9 @@ def classify_risk(data: FraudRiskInput):
             "High Risk" if prediction == 1 else "Normal"
         ),
         "high_risk_probability": round(
-            float(probability) * 100, 2
-        )
+            probability * 100, 2
+        ),
+        "evaluation_note": "Training labels are rule-generated demonstration labels and are not verified real-world fraud outcomes."
     }
 
 
@@ -206,8 +243,9 @@ def recommend(data: RecommendationInput):
             "recommendations": results
         }
 
-    except Exception as error:
+    except Exception:
+        logger.exception("Recommendation request failed")
         raise HTTPException(
             status_code=500,
-            detail=str(error)
-        )
+            detail="Recommendation service failed"
+        ) from None

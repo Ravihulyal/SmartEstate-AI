@@ -1,6 +1,9 @@
 import { api } from './api'
 import type { ListingType, Property, PropertyFilters, PropertyListResponse, PropertyPayload, PropertyStatus, PropertyType } from '../types'
 
+export const MAX_PROPERTY_IMAGES = 6
+export const MAX_PROPERTY_IMAGE_BYTES = 5 * 1024 * 1024
+
 export async function getProperties(filters: PropertyFilters = {}): Promise<PropertyListResponse> {
   const params: Record<string, string | number> = {}
   if (filters.city?.trim()) params.city = filters.city.trim()
@@ -29,6 +32,28 @@ export async function createProperty(payload: PropertyPayload): Promise<{ proper
 export async function updateProperty(id: string, payload: PropertyPayload): Promise<{ property: Property; predictedPriceLakhs: number | null }> {
   const response = await api.patch<{ property: Property; predictedPriceLakhs: number | null }>(`/properties/${encodeURIComponent(id)}`, payload)
   return response.data
+}
+
+export async function uploadPropertyImages(
+  files: File[],
+  onProgress: (percentage: number) => void,
+): Promise<string[]> {
+  const formData = new FormData()
+  files.forEach((file) => formData.append('images', file))
+  const response = await api.post<{ images: Array<{ secureUrl: string }> }>(
+    '/properties/images',
+    formData,
+    {
+      onUploadProgress: (event) => {
+        if (event.total) onProgress(Math.round((event.loaded / event.total) * 100))
+      },
+    },
+  )
+  return response.data.images.map((image) => image.secureUrl)
+}
+
+export async function deletePropertyImage(secureUrl: string): Promise<void> {
+  await api.delete('/properties/images', { data: { secureUrl } })
 }
 
 export async function getPendingListings(): Promise<PropertyListResponse> {

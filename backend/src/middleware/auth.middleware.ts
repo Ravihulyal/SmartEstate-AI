@@ -79,3 +79,41 @@ export function authenticateToken(
   req.user = result.user;
   next();
 }
+
+export function optionalAuthenticateToken(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    next();
+    return;
+  }
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid authentication token"
+    });
+  }
+
+  const token = authHeader.slice("Bearer ".length);
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication token required"
+    });
+  }
+
+  const result = verifyToken(token);
+  if ("error" in result) {
+    return res.status(401).json({
+      success: false,
+      message: invalidTokenMessage(result)
+    });
+  }
+
+  req.user = result.user;
+  next();
+}

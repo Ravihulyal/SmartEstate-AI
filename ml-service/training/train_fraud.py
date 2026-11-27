@@ -57,6 +57,7 @@ print("------------------------")
 print("Normal listings:", normal_count)
 print("Suspicious listings:", anomaly_count)
 print("Total tested:", len(X_test))
+print("These are model-flagged unusual patterns, not verified fraud cases; accuracy is unavailable without ground-truth labels.")
 
 # Save model
 os.makedirs("artifacts", exist_ok=True)

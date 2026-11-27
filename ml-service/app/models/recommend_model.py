@@ -1,6 +1,13 @@
 
 import pandas as pd
 from pathlib import Path
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _load_clean_properties():
+    base_dir = Path(__file__).resolve().parents[2]
+    return pd.read_csv(base_dir / "datasets" / "properties_cleaned.csv")
 
 
 def recommend_properties(
@@ -11,8 +18,7 @@ def recommend_properties(
     top_n=5
 ):
     # Load cleaned property dataset
-    base_dir = Path(__file__).resolve().parents[2]
-    df = pd.read_csv(base_dir / "datasets" / "properties_cleaned.csv")
+    df = _load_clean_properties().copy()
 
     # Remove properties above the budget
     df = df[df["price"] <= budget].copy()

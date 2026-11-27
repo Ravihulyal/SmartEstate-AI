@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Building2, Pencil, Plus, RotateCcw } from 'lucide-react'
-import { getMyListings, createProperty, updateProperty, propertyTypeOptions } from '../services/properties'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { Building2, ImagePlus, Pencil, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import {
+  createProperty,
+  deletePropertyImage,
+  getMyListings,
+  MAX_PROPERTY_IMAGE_BYTES,
+  MAX_PROPERTY_IMAGES,
+  propertyTypeOptions,
+  updateProperty,
+  uploadPropertyImages
+} from '../services/properties'
 import { getErrorMessage } from '../services/api'
 import { notify } from '../services/toast'
 import { StatusBadge } from '../components/StatusBadge'
 import { Spinner } from '../components/Spinner'
+import { FallbackImage } from '../components/FallbackImage'
+import { AuctionManagementPanel } from '../components/AuctionManagementPanel'
+import { PendingWinnerApprovalPanel } from '../components/PendingWinnerApprovalPanel'
+import { SellerClosingPanel } from '../components/SellerClosingPanel'
 import type { ListingType, Property, PropertyPayload, PropertyType } from '../types'
 
 interface FormState {
@@ -20,13 +34,12 @@ interface FormState {
   bathrooms: string
   price: string
   rentPerMonth: string
-  images: string
 }
 
 const emptyForm: FormState = {
   title: '', description: '', location: '', city: '', state: 'Karnataka',
   propertyType: 'APARTMENT', listingType: 'SALE', totalSqft: '', bhk: '2',
-  bathrooms: '2', price: '', rentPerMonth: '', images: '',
+  bathrooms: '2', price: '', rentPerMonth: '',
 }
 
 function formFromProperty(property: Property): FormState {
@@ -43,12 +56,10 @@ function formFromProperty(property: Property): FormState {
     bathrooms: String(property.bathrooms),
     price: property.price === null ? '' : String(property.price),
     rentPerMonth: property.rentPerMonth === null ? '' : String(property.rentPerMonth),
-    images: property.images.join(', '),
   }
 }
 
-function toPayload(form: FormState): PropertyPayload {
-  const images = form.images.split(',').map((url) => url.trim()).filter(Boolean)
+function toPayload(form: FormState, images: string[]): PropertyPayload {
   return {
     title: form.title.trim(),
     description: form.description.trim(),
@@ -65,28 +76,67 @@ function toPayload(form: FormState): PropertyPayload {
   }
 }
 
+function LocalImagePreview({ file }: { file: File }) {
+  const imageRef = useRef<HTMLImageElement>(null)
+  const [failedFile, setFailedFile] = useState<File | null>(null)
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = imageRef.current
+    if (image) image.src = objectUrl
+    return () => {
+      URL.revokeObjectURL(objectUrl)
+      image?.removeAttribute('src')
+    }
+  }, [file])
+
+  if (failedFile === file) return <FallbackImage src="" alt={`Selected ${file.name}`} />
+  return <img ref={imageRef} alt={`Selected ${file.name}`} onError={() => setFailedFile(file)} />
+}
+
 function formatPrice(property: Property): string {
   const amount = property.listingType === 'SALE' ? property.price : property.rentPerMonth
   if (amount === null) return 'Price unavailable'
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount)
 }
 
+function isManagedCloudinaryImage(url: string): boolean {
+  try {
+    const parsedUrl = new URL(url)
+    return parsedUrl.protocol === 'https:' &&
+      parsedUrl.hostname === 'res.cloudinary.com' &&
+      parsedUrl.pathname.includes('/upload/') &&
+      parsedUrl.pathname.includes('/smartestate/properties/')
+  } catch {
+    return false
+  }
+}
+
 export function SellerDashboard() {
   const [listings, setListings] = useState<Property[]>([])
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editing, setEditing] = useState<Property | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [uploadedImages, setUploadedImages] = useState<string[]>([])
+  const [imagesPendingDelete, setImagesPendingDelete] = useState<string[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [removingImage, setRemovingImage] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [listingsError, setListingsError] = useState('')
+  const uploadInProgress = useRef(false)
+  const submissionInProgress = useRef(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    setError('')
+    setListingsError('')
     try {
       const result = await getMyListings()
       setListings(result.properties)
     } catch (requestError: unknown) {
-      setError(getErrorMessage(requestError, 'Your listings could not be loaded.'))
+      setListingsError(getErrorMessage(requestError, 'Your listings could not be loaded.'))
     } finally {
       setLoading(false)
     }
@@ -96,7 +146,7 @@ export function SellerDashboard() {
     let active = true
     getMyListings()
       .then((result) => { if (active) setListings(result.properties) })
-      .catch((requestError: unknown) => { if (active) setError(getErrorMessage(requestError, 'Your listings could not be loaded.')) })
+      .catch((requestError: unknown) => { if (active) setListingsError(getErrorMessage(requestError, 'Your listings could not be loaded.')) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
@@ -104,38 +154,138 @@ export function SellerDashboard() {
   function startEdit(property: Property) {
     setEditing(property)
     setForm(formFromProperty(property))
+    setUploadedImages(property.images)
+    setSelectedFiles([])
+    setImagesPendingDelete([])
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function resetForm() {
+  async function resetForm(discardNewUploads = true) {
+    if (discardNewUploads) {
+      const newUploads = uploadedImages.filter((url) => !editing?.images.includes(url))
+      const results = await Promise.allSettled(newUploads.map((url) => deletePropertyImage(url)))
+      if (results.some((result) => result.status === 'rejected')) {
+        notify('The form was cleared, but one or more uploaded images could not be removed from storage.', 'error')
+      }
+    }
     setEditing(null)
     setForm(emptyForm)
+    setSelectedFiles([])
+    setUploadedImages([])
+    setImagesPendingDelete([])
+    setUploadProgress(0)
+  }
+
+  function selectImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? [])
+    event.currentTarget.value = ''
+    const valid: File[] = []
+    let validationMessage = ''
+
+    for (const file of files) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        validationMessage = 'Choose JPEG, PNG, or WebP images only.'
+        continue
+      }
+      if (file.size > MAX_PROPERTY_IMAGE_BYTES) {
+        validationMessage = 'Each image must be 5 MB or smaller.'
+        continue
+      }
+      if (uploadedImages.length + selectedFiles.length + valid.length >= MAX_PROPERTY_IMAGES) {
+        validationMessage = `A property can have up to ${MAX_PROPERTY_IMAGES} images.`
+        break
+      }
+      valid.push(file)
+    }
+
+    setError(validationMessage)
+    if (valid.length) setSelectedFiles((current) => [...current, ...valid])
+  }
+
+  async function uploadSelectedImages() {
+    if (!selectedFiles.length || uploadInProgress.current || submissionInProgress.current) return
+    uploadInProgress.current = true
+    setUploadingImages(true)
+    setUploadProgress(0)
+    setError('')
+    try {
+      const secureUrls = await uploadPropertyImages(selectedFiles, setUploadProgress)
+      setUploadedImages((current) => [...current, ...secureUrls])
+      setSelectedFiles([])
+      notify(`${secureUrls.length} image${secureUrls.length === 1 ? '' : 's'} uploaded securely.`)
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'Images could not be uploaded. Please try again.'))
+    } finally {
+      uploadInProgress.current = false
+      setUploadingImages(false)
+      setUploadProgress(0)
+    }
+  }
+
+  async function removeUploadedImage(secureUrl: string) {
+    if (editing?.images.includes(secureUrl)) {
+      setUploadedImages((current) => current.filter((url) => url !== secureUrl))
+      if (isManagedCloudinaryImage(secureUrl)) {
+        setImagesPendingDelete((current) => [...current, secureUrl])
+      }
+      return
+    }
+
+    setRemovingImage(secureUrl)
+    setError('')
+    try {
+      await deletePropertyImage(secureUrl)
+      setUploadedImages((current) => current.filter((url) => url !== secureUrl))
+      notify('Image removed.')
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, 'Image could not be removed.'))
+    } finally {
+      setRemovingImage('')
+    }
+  }
+
+  function removeSelectedImage(index: number) {
+    setSelectedFiles((current) => current.filter((_file, fileIndex) => fileIndex !== index))
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
-    const images = form.images.split(',').map((url) => url.trim()).filter(Boolean)
-    if (images.some((url) => {
-      try { return !['http:', 'https:'].includes(new URL(url).protocol) } catch { return true }
-    })) {
-      setError('Each property image must be a complete http or https URL.')
+    if (submissionInProgress.current || submitting) return
+    if (uploadInProgress.current) {
+      setError('Wait for the selected images to finish uploading before submitting.')
       return
     }
+    if (selectedFiles.length) {
+      setError('Upload your selected images before submitting the property.')
+      return
+    }
+    if (uploadedImages.length > MAX_PROPERTY_IMAGES) {
+      setError(`A property can have up to ${MAX_PROPERTY_IMAGES} images.`)
+      return
+    }
+    submissionInProgress.current = true
     setSubmitting(true)
     try {
-      const payload = toPayload(form)
+      const payload = toPayload(form, uploadedImages)
       const result = editing ? await updateProperty(editing.id, payload) : await createProperty(payload)
       const prediction = result.predictedPriceLakhs
       notify(editing ? 'Listing updated and resubmitted for approval.' : 'Property submitted for approval.')
       if (form.listingType === 'SALE' && prediction !== null) {
         notify(`AI estimated sale price: ₹${prediction.toLocaleString('en-IN')} Lakhs. This is not a guaranteed market value.`)
       }
-      resetForm()
+      if (imagesPendingDelete.length) {
+        const deletionResults = await Promise.allSettled(imagesPendingDelete.map((url) => deletePropertyImage(url)))
+        if (deletionResults.some((deletion) => deletion.status === 'rejected')) {
+          notify('The listing was saved, but one or more removed images could not be deleted from storage.', 'error')
+        }
+      }
+      await resetForm(false)
       await refresh()
     } catch (requestError: unknown) {
       setError(getErrorMessage(requestError, 'The property could not be saved. Please try again.'))
     } finally {
+      submissionInProgress.current = false
       setSubmitting(false)
     }
   }
@@ -145,7 +295,7 @@ export function SellerDashboard() {
       <div className="container">
         <div className="page-heading">
           <div><span className="eyebrow">Seller workspace</span><h1 className="page-title">Manage your listings</h1><p className="subtle">Submit a property and follow it through the review process.</p></div>
-          <div className="stat-card" style={{ minWidth: 140 }}><span className="stat-label">Your listings</span><strong className="stat-value">{listings.length}</strong></div>
+          <div className="seller-dashboard-actions"><Link className="btn btn-outline" to="/seller/auctions/new">Create auction</Link><div className="stat-card" style={{ minWidth: 140 }}><span className="stat-label">Your listings</span><strong className="stat-value">{listings.length}</strong></div></div>
         </div>
         <div className="dashboard-layout" style={{ gridTemplateColumns: 'minmax(0,1.05fr) minmax(0,.95fr)' }}>
           <section className="form-card">
@@ -168,18 +318,55 @@ export function SellerDashboard() {
                 ) : (
                   <div className="field"><label htmlFor="rentPerMonth">Monthly rent (INR)</label><input id="rentPerMonth" type="number" min="1" step="any" required value={form.rentPerMonth} onChange={(event) => setForm({ ...form, rentPerMonth: event.target.value })} /></div>
                 )}
-                <div className="field field-wide"><label htmlFor="images">Image URLs (optional)</label><input id="images" type="text" value={form.images} onChange={(event) => setForm({ ...form, images: event.target.value })} placeholder="https://… (separate multiple URLs with commas)" /><span className="label-note">Images need to be publicly reachable http/https URLs.</span></div>
+                <div className="field field-wide">
+                  <label htmlFor="property-images">Property images ({uploadedImages.length + selectedFiles.length}/{MAX_PROPERTY_IMAGES})</label>
+                  <div className="image-upload-actions">
+                    <label className="btn btn-outline btn-small" htmlFor="property-images"><ImagePlus size={15} />Choose images</label>
+                    <input
+                      id="property-images"
+                      className="file-input-hidden"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      onChange={selectImages}
+                      disabled={uploadingImages || submitting || uploadedImages.length + selectedFiles.length >= MAX_PROPERTY_IMAGES}
+                    />
+                    <button className="btn btn-primary btn-small" type="button" onClick={() => void uploadSelectedImages()} disabled={!selectedFiles.length || uploadingImages || submitting}>
+                      <Upload size={14} />{uploadingImages ? `Uploading ${uploadProgress}%` : `Upload ${selectedFiles.length || ''} selected`}
+                    </button>
+                  </div>
+                  <span className="label-note">JPEG, PNG, or WebP · up to 5 MB each · no more than {MAX_PROPERTY_IMAGES} images. Upload images before submitting.</span>
+                  {uploadingImages && <progress className="upload-progress" max="100" value={uploadProgress} aria-label={`Image upload ${uploadProgress}% complete`} />}
+                  {(uploadedImages.length > 0 || selectedFiles.length > 0) && (
+                    <div className="image-upload-grid">
+                      {uploadedImages.map((url) => (
+                        <div className="image-upload-item" key={url}>
+                          <FallbackImage src={url} alt="Uploaded property" />
+                          <span className="image-upload-label">{editing?.images.includes(url) ? 'Current image' : 'Uploaded'}</span>
+                          <button type="button" aria-label="Remove uploaded image" onClick={() => void removeUploadedImage(url)} disabled={removingImage === url || uploadingImages || submitting}><Trash2 size={14} /></button>
+                        </div>
+                      ))}
+                      {selectedFiles.map((file, index) => (
+                        <div className="image-upload-item" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+                          <LocalImagePreview file={file} />
+                          <span className="image-upload-label">Selected</span>
+                          <button type="button" aria-label={`Remove ${file.name}`} onClick={() => removeSelectedImage(index)} disabled={uploadingImages || submitting}><Trash2 size={14} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="form-actions">
-                <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? 'Saving…' : editing ? 'Save changes & resubmit' : 'Submit for approval'}</button>
-                {editing && <button className="btn btn-outline" type="button" onClick={resetForm}><RotateCcw size={15} />Cancel edit</button>}
+                <button className="btn btn-primary" type="submit" disabled={submitting || uploadingImages}>{submitting ? 'Saving…' : editing ? 'Save changes & resubmit' : 'Submit for approval'}</button>
+                {editing && <button className="btn btn-outline" type="button" onClick={() => void resetForm()} disabled={submitting || uploadingImages}><RotateCcw size={15} />Cancel edit</button>}
               </div>
               {form.listingType === 'SALE' && <p className="label-note" style={{ marginTop: 14 }}>Sale submissions are automatically evaluated by the AI service. Estimates are informational only and are stored in lakhs of INR.</p>}
             </form>
           </section>
           <section>
             <div className="section-head" style={{ marginBottom: 15 }}><div><h2 style={{ fontFamily: 'Georgia,serif', fontWeight: 500 }}>Your submissions</h2><p style={{ margin: '5px 0 0', fontSize: 13 }}>Listings can be edited while pending or after rejection.</p></div><Building2 size={21} color="#557761" /></div>
-            {loading ? <Spinner label="Loading your listings" /> : error && !listings.length ? <div className="error-box" role="alert">{error}</div> : !listings.length ? <div className="empty-state"><Building2 size={26} /><h3>No listings yet</h3><p>Your submitted properties will appear here.</p></div> : (
+            {loading ? <Spinner label="Loading your listings" /> : listingsError && !listings.length ? <div className="error-box" role="alert">{listingsError}</div> : !listings.length ? <div className="empty-state"><Building2 size={26} /><h3>No listings yet</h3><p>Your submitted properties will appear here.</p></div> : (
               <div className="listings">
                 {listings.map((property) => (
                   <article className="listing-row" key={property.id}>
@@ -192,6 +379,9 @@ export function SellerDashboard() {
             )}
           </section>
         </div>
+        <PendingWinnerApprovalPanel />
+        <SellerClosingPanel onClosingCompleted={refresh} />
+        <AuctionManagementPanel mode="SELLER" />
       </div>
     </main>
   )

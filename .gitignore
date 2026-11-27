@@ -10,3 +10,20 @@ __pycache__/
 *.pkl
 *.joblib
 .DS_Store
+# Python virtual environments
+.venv/
+**/.venv/
+
+# Python generated files
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE temporary files
+.tsupgrader/
+**/.tsupgrader/
+
+# Include trained ML models required by the deployed API
+!ml-service/artifacts/price_model.joblib
+!ml-service/artifacts/fraud_model.joblib
+!ml-service/artifacts/risk_model.joblib

@@ -53,3 +53,4 @@ else:
 
 print("Predicted high-risk probability:",
       round(probability * 100, 2), "%")
+print("This model uses rule-generated demonstration labels, not verified real-world fraud outcomes.")
